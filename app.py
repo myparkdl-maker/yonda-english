@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 from google import genai
+from google.genai import types
 from PIL import Image
 from docx import Document
 from docx.shared import Inches
@@ -33,10 +34,21 @@ def get_sort_key(file):
         return name 
 
 def analyze_image_to_structured_data(image):
-    # API 전송 거부(ClientError)를 막기 위해 이미지를 표준 RGB 모드로 강제 변환
+    # 1. 표준 RGB 모드로 강제 변환
     if image.mode != "RGB":
         image = image.convert("RGB")
         
+    # 2. 이미지를 JPEG 바이트로 압축 변환
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG")
+    image_bytes = buf.getvalue()
+    
+    # 3. 구글 공식 SDK 표준 Part 객체 생성 (ClientError 원천 차단)
+    image_part = types.Part.from_bytes(
+        data=image_bytes,
+        mime_type='image/jpeg',
+    )
+    
     prompt = """
     이 이미지에 있는 영어 독해 지문을 처음부터 끝까지 빠짐없이 '문장 단위'로 분석해줘.
     결과를 워드 파일 표에 넣을 거니까, 반드시 아래의 양식을 엄격하게 지켜서 작성해.
@@ -51,7 +63,7 @@ def analyze_image_to_structured_data(image):
     
     response = client.models.generate_content(
         model='gemini-1.5-flash',
-        contents=[image, prompt],
+        contents=[image_part, prompt],
     )
     return response.text
 
