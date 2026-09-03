@@ -33,11 +33,6 @@ def get_sort_key(file):
         return name 
 
 def analyze_image_to_structured_data(image):
-    # Streamlit Cloud 서버 환경 에러(ClientError) 방지를 위해 바이트 변환 적용
-    buf = io.BytesIO()
-    image.save(buf, format="JPEG")
-    image_bytes = buf.getvalue()
-
     prompt = """
     이 이미지에 있는 영어 독해 지문을 처음부터 끝까지 빠짐없이 '문장 단위'로 분석해줘.
     결과를 워드 파일 표에 넣을 거니까, 반드시 아래의 양식을 엄격하게 지켜서 작성해.
@@ -50,13 +45,10 @@ def analyze_image_to_structured_data(image):
     ====
     """
     
-    # 안정적인 클라우드 전용 모델 및 바이트 데이터 전달 방식 적용
+    # 구글 공식 SDK 표준 방식 (PIL Image와 프롬프트를 리스트로 전달)
     response = client.models.generate_content(
         model='gemini-1.5-flash',
-        contents=[
-            {"mime_type": "image/jpeg", "data": image_bytes},
-            prompt
-        ],
+        contents=[image, prompt],
     )
     return response.text
 
