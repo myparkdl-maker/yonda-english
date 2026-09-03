@@ -33,6 +33,10 @@ def get_sort_key(file):
         return name 
 
 def analyze_image_to_structured_data(image):
+    # API 전송 거부(ClientError)를 막기 위해 이미지를 표준 RGB 모드로 강제 변환
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+        
     prompt = """
     이 이미지에 있는 영어 독해 지문을 처음부터 끝까지 빠짐없이 '문장 단위'로 분석해줘.
     결과를 워드 파일 표에 넣을 거니까, 반드시 아래의 양식을 엄격하게 지켜서 작성해.
@@ -45,7 +49,6 @@ def analyze_image_to_structured_data(image):
     ====
     """
     
-    # 구글 공식 SDK 표준 방식 (PIL Image와 프롬프트를 리스트로 전달)
     response = client.models.generate_content(
         model='gemini-1.5-flash',
         contents=[image, prompt],
