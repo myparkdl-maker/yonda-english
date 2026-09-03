@@ -8,7 +8,7 @@ import io
 import socket
 import qrcode
 
-# 1. API 키 설정 (주의: 실제 서비스 배포 시 st.secrets 등을 활용하여 숨기세요!)
+# 1. API 키 설정
 API_KEY = "AQ.Ab8RN6JeD7GDknfM9jFK3SNq7eMlc0iKMp8pEAk9NZLgw17wzA"
 client = genai.Client(api_key=API_KEY)
 
@@ -33,6 +33,11 @@ def get_sort_key(file):
         return name 
 
 def analyze_image_to_structured_data(image):
+    # Streamlit Cloud 서버 환경 에러(ClientError) 방지를 위해 바이트 변환 적용
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG")
+    image_bytes = buf.getvalue()
+
     prompt = """
     이 이미지에 있는 영어 독해 지문을 처음부터 끝까지 빠짐없이 '문장 단위'로 분석해줘.
     결과를 워드 파일 표에 넣을 거니까, 반드시 아래의 양식을 엄격하게 지켜서 작성해.
@@ -44,9 +49,14 @@ def analyze_image_to_structured_data(image):
     [VOCAB] (단어1: 뜻, 단어2: 뜻 - 어려운 단어가 없으면 '없음'이라고 적을 것)
     ====
     """
+    
+    # 안정적인 클라우드 전용 모델 및 바이트 데이터 전달 방식 적용
     response = client.models.generate_content(
-        model='gemini-3.6-flash',
-        contents=[image, prompt],
+        model='gemini-1.5-flash',
+        contents=[
+            {"mime_type": "image/jpeg", "data": image_bytes},
+            prompt
+        ],
     )
     return response.text
 
@@ -99,7 +109,6 @@ def create_word_document(parsed_data):
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 
-# 사이드바: 스마트폰 접속용 QR 코드 제공 (BytesIO 처리 완료)
 with st.sidebar:
     st.markdown("### 📱 스마트폰으로 사진 찍기")
     local_ip = get_local_ip()
@@ -110,12 +119,10 @@ with st.sidebar:
     qr.save(buf, format="PNG")
     buf.seek(0)
     
-    st.image(buf, caption="스마트폰 기본 카메라로 스캔하세요 (같은 와이파이 필수)")
-    st.info(f"직접 접속 주소:\n{local_url}")
+    st.image(buf, caption="스마트폰 기본 카메라로 스캔하세요")
 
 st.title("📚 사랑하는 욘다를 위한 아빠의 선물")
 
-# 분석 결과를 기억해두는 저장소(Session State) 생성
 if 'parsed_data' not in st.session_state:
     st.session_state.parsed_data = None
 if 'word_file' not in st.session_state:
@@ -136,15 +143,12 @@ if uploaded_files:
                 analyzed_result = analyze_image_to_structured_data(image)
                 all_analyzed_blocks.append(analyzed_result)
         
-        # 분석이 끝나면 결과를 화면(Session State)에 기억시킴
         st.session_state.parsed_data = parse_blocks_to_data(all_analyzed_blocks)
         st.session_state.word_file = create_word_document(st.session_state.parsed_data)
 
-# 기억해둔 데이터가 있다면 새로고침되어도 다운로드 버튼과 프리뷰를 계속 보여줌
 if st.session_state.parsed_data:
     st.success("✅ 문서 생성이 완료되었습니다! 아래에서 내용을 확인하세요.")
     
-    # 다운로드 버튼을 누르기 쉽게 위쪽으로 배치
     st.download_button(
         label="📥 분석된 워드 문서(.docx) 다운로드",
         data=st.session_state.word_file,
@@ -152,7 +156,6 @@ if st.session_state.parsed_data:
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
     
-    # --- 화면에 미리보기 출력 ---
     st.subheader("👀 분석 결과 미리보기")
     
     header_col1, header_col2 = st.columns(2)
