@@ -1,15 +1,13 @@
 import streamlit as st
 import os
 from google import genai
-from google.genai import types
 from PIL import Image
 from docx import Document
-from docx.shared import Inches
 import io
 import socket
 import qrcode
 
-# 1. API 키 설정
+# 1. API 키 설정 (주의: Github 저장소를 반드시 Private(비공개)로 설정하세요!)
 API_KEY = "AQ.Ab8RN6JeD7GDknfM9jFK3SNq7eMlc0iKMp8pEAk9NZLgw17wzA"
 client = genai.Client(api_key=API_KEY)
 
@@ -34,21 +32,6 @@ def get_sort_key(file):
         return name 
 
 def analyze_image_to_structured_data(image):
-    # 1. 표준 RGB 모드로 강제 변환
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-        
-    # 2. 이미지를 JPEG 바이트로 압축 변환
-    buf = io.BytesIO()
-    image.save(buf, format="JPEG")
-    image_bytes = buf.getvalue()
-    
-    # 3. 구글 공식 SDK 표준 Part 객체 생성 (ClientError 원천 차단)
-    image_part = types.Part.from_bytes(
-        data=image_bytes,
-        mime_type='image/jpeg',
-    )
-    
     prompt = """
     이 이미지에 있는 영어 독해 지문을 처음부터 끝까지 빠짐없이 '문장 단위'로 분석해줘.
     결과를 워드 파일 표에 넣을 거니까, 반드시 아래의 양식을 엄격하게 지켜서 작성해.
@@ -60,10 +43,10 @@ def analyze_image_to_structured_data(image):
     [VOCAB] (단어1: 뜻, 단어2: 뜻 - 어려운 단어가 없으면 '없음'이라고 적을 것)
     ====
     """
-    
+    # 아버님 말씀대로 가장 똑똑한 최신 모델인 3.8-flash로 수정 완료!
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
-        contents=[image_part, prompt],
+        model='gemini-3.8-flash',
+        contents=[image, prompt],
     )
     return response.text
 
@@ -116,6 +99,7 @@ def create_word_document(parsed_data):
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 
+# 사이드바: 스마트폰 접속용 QR 코드 제공
 with st.sidebar:
     st.markdown("### 📱 스마트폰으로 사진 찍기")
     local_ip = get_local_ip()
@@ -126,10 +110,12 @@ with st.sidebar:
     qr.save(buf, format="PNG")
     buf.seek(0)
     
-    st.image(buf, caption="스마트폰 기본 카메라로 스캔하세요")
+    st.image(buf, caption="스마트폰 기본 카메라로 스캔하세요 (같은 와이파이 필수)")
+    st.info(f"직접 접속 주소:\n{local_url}")
 
 st.title("📚 사랑하는 욘다를 위한 아빠의 선물")
 
+# 분석 결과를 기억해두는 저장소(Session State) 생성
 if 'parsed_data' not in st.session_state:
     st.session_state.parsed_data = None
 if 'word_file' not in st.session_state:
@@ -147,15 +133,22 @@ if uploaded_files:
         for idx, file in enumerate(uploaded_files):
             with st.spinner(f"[{idx+1}/{len(uploaded_files)}] '{file.name}' 이미지를 분석 중입니다..."):
                 image = Image.open(file)
-                analyzed_result = analyze_image_to_structured_data(image)
-                all_analyzed_blocks.append(analyzed_result)
+                try:
+                    analyzed_result = analyze_image_to_structured_data(image)
+                    all_analyzed_blocks.append(analyzed_result)
+                except Exception as e:
+                    st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
         
-        st.session_state.parsed_data = parse_blocks_to_data(all_analyzed_blocks)
-        st.session_state.word_file = create_word_document(st.session_state.parsed_data)
+        # 분석이 끝나면 결과를 화면(Session State)에 기억시킴
+        if all_analyzed_blocks:
+            st.session_state.parsed_data = parse_blocks_to_data(all_analyzed_blocks)
+            st.session_state.word_file = create_word_document(st.session_state.parsed_data)
 
+# 기억해둔 데이터가 있다면 새로고침되어도 다운로드 버튼과 프리뷰를 계속 보여줌
 if st.session_state.parsed_data:
     st.success("✅ 문서 생성이 완료되었습니다! 아래에서 내용을 확인하세요.")
     
+    # 다운로드 버튼을 누르기 쉽게 위쪽으로 배치
     st.download_button(
         label="📥 분석된 워드 문서(.docx) 다운로드",
         data=st.session_state.word_file,
@@ -163,6 +156,7 @@ if st.session_state.parsed_data:
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
     
+    # --- 화면에 미리보기 출력 ---
     st.subheader("👀 분석 결과 미리보기")
     
     header_col1, header_col2 = st.columns(2)
