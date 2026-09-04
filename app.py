@@ -45,7 +45,7 @@ def analyze_image_to_structured_data(image):
     """
     # 아버님 말씀대로 가장 똑똑한 최신 모델인 3.8-flash로 수정 완료!
     response = client.models.generate_content(
-        model='gemini-3.8-flash',
+        model='gemini-3.5-flash-lite',
         contents=[image, prompt],
     )
     return response.text
